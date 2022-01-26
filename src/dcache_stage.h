@@ -46,6 +46,10 @@ typedef struct Dcache_Stage_struct {
   Stage_Data sd; /* stage interface data */
 
   Cache  dcache;      /* the data cache */
+  Cache  fully_associative_lru_dcache;      /* the fully associative lru dcache for stats */
+  Hash_Table accessed_entries; /* A dynamically allocated array of all
+                                   the cache entries every accessed.
+                                   This array is used to identify compulsory miss. */
   Ports* ports;       /* read and write ports to the data cache (per bank) */
   Cache  pref_dcache; /* prefetcher cache for data cache */
 

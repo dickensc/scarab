@@ -33,6 +33,7 @@
 #include "globals/global_types.h"
 #include "globals/global_vars.h"
 #include "globals/utils.h"
+#include "libs/hash_lib.h"
 
 #include "bp/bp.h"
 #include "dcache_stage.h"
@@ -90,7 +91,8 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   dc->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
 
   /* initialize the cache structure */
-  init_cache(&dc->dcache, "DCACHE", DCACHE_SIZE, DCACHE_ASSOC, DCACHE_LINE_SIZE,
+  init_cache(&dc->dcache, "DCACHE",
+             DCACHE_SIZE, DCACHE_ASSOC, DCACHE_LINE_SIZE,
              sizeof(Dcache_Data), DCACHE_REPL);
 
   reset_dcache_stage();
@@ -111,6 +113,15 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
                DCACHE_REPL);
 
   memset(dc->rand_wb_state, 0, NUM_ELEMENTS(dc->rand_wb_state));
+
+  // LAB3: Data structures for identifying compulsory, capacity, conflict misses
+  /* Make a fully associative LRU DCACHE */
+  init_cache(&dc->fully_associative_lru_dcache, "FULLY_ASSOCIATIVE_LRU_DCACHE",
+             DCACHE_SIZE, DCACHE_SIZE / DCACHE_LINE_SIZE, DCACHE_LINE_SIZE,
+             sizeof(Dcache_Data), REPL_TRUE_LRU);
+
+  /* Initialize the set of all the accessed lines of memory */
+  init_hash_table(&dc->accessed_entries, "ACCESSED_ENTRIES", DCACHE_SIZE, sizeof(Addr));
 }
 
 
@@ -156,10 +167,14 @@ void debug_dcache_stage() {
 /* update_dcache_stage: */
 void update_dcache_stage(Stage_Data* src_sd) {
   Dcache_Data* line;
+  Dcache_Data* fully_associative_lru_line;
   Counter      oldest_op_num, last_oldest_op_num;
   uns          oldest_index;
   int          start_op_count;
   Addr         line_addr;
+  Addr         insert_line_addr;
+  Addr         repl_line_addr;
+  Flag         new_hash_table_entry = 0;
   uns          ii, jj;
 
   // {{{ phase 1 - move ops into the dcache stage
@@ -265,7 +280,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
            N_BIT_MASK(LOG2(DCACHE_BANKS));
     /* check on the availability of a read port for the given bank */
     DEBUG(dc->proc_id,
-          "check_read and write port availiabilty mem_type:%s bank:%d \n",
+          "check_read and write port availability mem_type:%s bank:%d \n",
           (op->table_info->mem_type == MEM_ST) ? "ST" : "LD", bank);
     if(!PERFECT_DCACHE && ((op->table_info->mem_type == MEM_ST &&
                             !get_write_port(&dc->ports[bank])) ||
@@ -283,7 +298,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
       ideal_l2l1_prefetcher(op);
 
     /* now access the dcache with it */
-
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE);
     op->dcache_cycle = cycle_count;
@@ -315,6 +329,14 @@ void update_dcache_stage(Stage_Data* src_sd) {
         wake_up_ops(op, REG_DATA_DEP, model->wake_hook);
       }
     } else if(line) {  // data cache hit
+
+      // Update fully_associative_lru_dcache
+      if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
+                                     op->oracle_info.va, &line_addr, TRUE)) {
+        // Add line to fully_associative_lru_dcache.
+        cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                     line_addr, &insert_line_addr, &repl_line_addr);
+      }
 
       if(PREF_FRAMEWORK_ON &&  // if framework is on use new prefetcher.
                                // otherwise old one
@@ -374,6 +396,29 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
       if(CACHE_STAT_ENABLE)
         dc_miss_stat(op);
+
+      if (!(Addr*)hash_table_access(dc->accessed_entries, line_addr)) {
+        // COMPULSORY MISS
+        STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
+
+        // Add to hash table.
+        hash_table_access_create(dc->accessed_entries, line_addr, &new_hash_table_entry);
+
+        // Add line to fully_associative_lru_dcache.
+        cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                     line_addr, &insert_line_addr, &repl_line_addr);
+      } else if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
+                                            op->oracle_info.va, &line_addr, TRUE)) {
+        // CAPACITY MISS
+        STAT_EVENT(op->proc_id, DCACHE_CAPACITY_MISS);
+
+        // Add line to fully_associative_lru_dcache.
+        cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                     line_addr, &insert_line_addr, &repl_line_addr);
+      } else {
+        // CONFLICT MISS
+        STAT_EVENT(op->proc_id, DCACHE_CONFLICT_MISS);
+      }
 
       if(op->table_info->mem_type == MEM_LD) {  // load request
         if(((model->mem == MODEL_MEM) &&
