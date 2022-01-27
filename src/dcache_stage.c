@@ -167,7 +167,6 @@ void debug_dcache_stage() {
 /* update_dcache_stage: */
 void update_dcache_stage(Stage_Data* src_sd) {
   Dcache_Data* line;
-  Dcache_Data* fully_associative_lru_line;
   Counter      oldest_op_num, last_oldest_op_num;
   uns          oldest_index;
   int          start_op_count;
@@ -397,12 +396,12 @@ void update_dcache_stage(Stage_Data* src_sd) {
       if(CACHE_STAT_ENABLE)
         dc_miss_stat(op);
 
-      if (!(Addr*)hash_table_access(dc->accessed_entries, line_addr)) {
+      if (!(Addr*)hash_table_access(&dc->accessed_entries, line_addr)) {
         // COMPULSORY MISS
         STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
 
         // Add to hash table.
-        hash_table_access_create(dc->accessed_entries, line_addr, &new_hash_table_entry);
+        hash_table_access_create(&dc->accessed_entries, line_addr, &new_hash_table_entry);
 
         // Add line to fully_associative_lru_dcache.
         cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,

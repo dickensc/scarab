@@ -69,3 +69,4 @@ test_string_pinball/
 *.code-workspace
 .env
 .idea/
+cmake-build-debug
