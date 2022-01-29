@@ -396,29 +396,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
       if(CACHE_STAT_ENABLE)
         dc_miss_stat(op);
 
-      if (!(Addr*)hash_table_access(&dc->accessed_entries, line_addr)) {
-        // COMPULSORY MISS
-        STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
-
-        // Add to hash table.
-        hash_table_access_create(&dc->accessed_entries, line_addr, &new_hash_table_entry);
-
-        // Add line to fully_associative_lru_dcache.
-        cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
-                     line_addr, &insert_line_addr, &repl_line_addr);
-      } else if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
-                                            op->oracle_info.va, &line_addr, TRUE)) {
-        // CAPACITY MISS
-        STAT_EVENT(op->proc_id, DCACHE_CAPACITY_MISS);
-
-        // Add line to fully_associative_lru_dcache.
-        cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
-                     line_addr, &insert_line_addr, &repl_line_addr);
-      } else {
-        // CONFLICT MISS
-        STAT_EVENT(op->proc_id, DCACHE_CONFLICT_MISS);
-      }
-
       if(op->table_info->mem_type == MEM_LD) {  // load request
         if(((model->mem == MODEL_MEM) &&
             scan_stores(
@@ -467,6 +444,29 @@ void update_dcache_stage(Stage_Data* src_sd) {
                 STAT_EVENT_ALL(ONE_MORE_DISCARDED_MEM_REQ_FULL);
             } else
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
+          }
+
+          if (!(Addr*)hash_table_access(&dc->accessed_entries, line_addr)) {
+            // COMPULSORY MISS
+            STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
+
+            // Add to hash table.
+            hash_table_access_create(&dc->accessed_entries, line_addr, &new_hash_table_entry);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
+                                                op->oracle_info.va, &line_addr, TRUE)) {
+            // CAPACITY MISS
+            STAT_EVENT(op->proc_id, DCACHE_CAPACITY_MISS);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else {
+            // CONFLICT MISS
+            STAT_EVENT(op->proc_id, DCACHE_CONFLICT_MISS);
           }
 
           if(!op->off_path) {
@@ -522,6 +522,29 @@ void update_dcache_stage(Stage_Data* src_sd) {
                 STAT_EVENT_ALL(ONE_MORE_DISCARDED_MEM_REQ_FULL);
             } else
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
+          }
+
+          if (!(Addr*)hash_table_access(&dc->accessed_entries, line_addr)) {
+            // COMPULSORY MISS
+            STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
+
+            // Add to hash table.
+            hash_table_access_create(&dc->accessed_entries, line_addr, &new_hash_table_entry);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
+                                                op->oracle_info.va, &line_addr, TRUE)) {
+            // CAPACITY MISS
+            STAT_EVENT(op->proc_id, DCACHE_CAPACITY_MISS);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else {
+            // CONFLICT MISS
+            STAT_EVENT(op->proc_id, DCACHE_CONFLICT_MISS);
           }
 
           if(!op->off_path) {
@@ -580,6 +603,29 @@ void update_dcache_stage(Stage_Data* src_sd) {
                 STAT_EVENT_ALL(ONE_MORE_DISCARDED_MEM_REQ_FULL);
             } else
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
+          }
+
+          if (!(Addr*)hash_table_access(&dc->accessed_entries, line_addr)) {
+            // COMPULSORY MISS
+            STAT_EVENT(op->proc_id, DCACHE_COMPULSORY_MISS);
+
+            // Add to hash table.
+            hash_table_access_create(&dc->accessed_entries, line_addr, &new_hash_table_entry);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else if(!(Dcache_Data*)cache_access(&dc->fully_associative_lru_dcache,
+                                                op->oracle_info.va, &line_addr, TRUE)) {
+            // CAPACITY MISS
+            STAT_EVENT(op->proc_id, DCACHE_CAPACITY_MISS);
+
+            // Add line to fully_associative_lru_dcache.
+            cache_insert(&dc->fully_associative_lru_dcache, dc->proc_id,
+                         line_addr, &insert_line_addr, &repl_line_addr);
+          } else {
+            // CONFLICT MISS
+            STAT_EVENT(op->proc_id, DCACHE_CONFLICT_MISS);
           }
 
           if(!op->off_path) {
