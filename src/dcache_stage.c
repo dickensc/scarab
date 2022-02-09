@@ -91,9 +91,9 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   dc->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
 
   /* initialize the cache structure */
-  init_cache(&dc->dcache, "DCACHE",
-             DCACHE_SIZE, DCACHE_ASSOC, DCACHE_LINE_SIZE,
-             sizeof(Dcache_Data), DCACHE_REPL);
+  init_cache_with_victim(&dc->dcache, "DCACHE",
+                         DCACHE_SIZE, DCACHE_ASSOC, DCACHE_LINE_SIZE,
+                         sizeof(Dcache_Data), DCACHE_REPL, DCACHE_NUM_VICTIM_LINES);
 
   reset_dcache_stage();
 

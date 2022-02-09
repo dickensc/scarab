@@ -90,6 +90,7 @@ typedef struct Cache_struct {
   uns         assoc;       /* associativity */
   uns         num_lines;   /* number of lines in the cache */
   uns         num_sets;    /* number of sets in the cache */
+  uns         num_victim_lines;   /* number of lines in the victim cache */
   uns         line_size;   /* size in bytes of one line */
   Repl_Policy repl_policy; /* the replacement policy of the cache */
 
@@ -104,10 +105,15 @@ typedef struct Cache_struct {
   Cache_Entry** entries;   /* A dynamically allocated array of all
                               of the cache entries. The array is
                               two-dimensional, sets are row major. */
+
+  Cache_Entry* victim_entries;   /* A dynamically allocated array of all
+                                    of the cache entries. The array is
+                                    two-dimensional, sets are row major. */
+
   List* unsure_lists;      /* A linked list for each set in the cache that
                               is used when simulating ideal replacement policies */
   Flag perfect;            /* is the cache perfect (for henry mem system) */
-  uns repl_pref_thresh; /* threshhold for how many entries are high-priority. */
+  uns repl_pref_thresh; /* threshold for how many entries are high-priority. */
   Cache_Entry** shadow_entries; /* A dynamically allocated array for shadow
                                    cache */
   uns* queue_end;               /* queue pointer for ideal storage */
@@ -126,6 +132,7 @@ typedef struct Cache_struct {
 /* prototypes */
 
 void  init_cache(Cache*, const char*, uns, uns, uns, uns, Repl_Policy);
+void  init_cache_with_victim(Cache*, const char*, uns, uns, uns, uns, Repl_Policy, uns num_victim_cache_lines);
 void* cache_access(Cache*, Addr, Addr*, Flag);
 void* cache_insert(Cache*, uns8, Addr, Addr*, Addr*);
 void* cache_insert_replpos(Cache* cache, uns8 proc_id, Addr addr,

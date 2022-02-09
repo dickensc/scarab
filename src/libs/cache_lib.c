@@ -27,6 +27,7 @@
  ***************************************************************************************/
 
 #include <stdlib.h>
+#include <stdio.h>
 #include "debug/debug_macros.h"
 #include "globals/assert.h"
 #include "globals/global_defs.h"
@@ -84,9 +85,13 @@ uns ext_cache_index(Cache* cache, Addr addr, Addr* tag, Addr* line_addr) {
 
 /**************************************************************************************/
 /* init_cache: */
-
 void init_cache(Cache* cache, const char* name, uns cache_size, uns assoc,
                 uns line_size, uns data_size, Repl_Policy repl_policy) {
+  init_cache_with_victim(cache, name, cache_size, assoc, line_size, data_size, repl_policy, 0);
+}
+
+void init_cache_with_victim(Cache* cache, const char* name, uns cache_size, uns assoc,
+                uns line_size, uns data_size, Repl_Policy repl_policy, uns num_victim_cache_lines) {
   uns num_lines = cache_size / line_size;
   uns num_sets  = cache_size / line_size / assoc;
   uns ii, jj;
@@ -114,6 +119,24 @@ void init_cache(Cache* cache, const char* name, uns cache_size, uns assoc,
 
   /* allocate memory for all the sets (pointers to line arrays)  */
   cache->entries = (Cache_Entry**)malloc(sizeof(Cache_Entry*) * num_sets);
+
+  if (num_victim_cache_lines > 0) {
+    cache->num_victim_lines = num_victim_cache_lines;
+    cache->victim_entries = (Cache_Entry*)malloc(sizeof(Cache_Entry) * num_victim_cache_lines);
+
+    // Initialize the lines in the victim cache.
+    for(ii = 0; ii < num_victim_cache_lines; ii++) {
+      cache->victim_entries[ii].valid = FALSE;
+      if(data_size) {
+        cache->victim_entries[ii].data = (void*)malloc(data_size);
+        memset(cache->victim_entries[ii].data, 0, data_size);
+      } else
+        cache->victim_entries[ii].data = INIT_CACHE_DATA_VALUE;
+    }
+  } else {
+    cache->num_victim_lines = 0;
+    cache->victim_entries = NULL;
+  }
 
   /* allocate memory for the unsure lists (if necessary) */
   if(cache->repl_policy == REPL_IDEAL)
@@ -214,6 +237,7 @@ void* cache_access(Cache* cache, Addr addr, Addr* line_addr, Flag update_repl) {
     Cache_Entry* line = &cache->entries[set][ii];
 
     if(line->valid && line->tag == tag) {
+      // HIT
       /* update replacement state if necessary */
       ASSERT(0, line->data);
       DEBUG(0, "Found line in cache '%s' at (set %u, way %u, base 0x%s)\n",
@@ -230,6 +254,8 @@ void* cache_access(Cache* cache, Addr addr, Addr* line_addr, Flag update_repl) {
       return line->data;
     }
   }
+
+  // MISS
   /* if it's a miss and we're doing ideal replacement, look in the unsure list
    */
   if(cache->repl_policy == REPL_IDEAL) {
@@ -243,6 +269,37 @@ void* cache_access(Cache* cache, Addr addr, Addr* line_addr, Flag update_repl) {
     return access_shadow_lines(cache, set, tag);
   }
 
+  // Check if data is in the victim cache.
+  for(ii = 0; ii < cache->num_victim_lines; ii++) {
+    Cache_Entry* line = &cache->victim_entries[ii];
+
+    if(line->valid && line->tag == tag) {
+      // HIT
+      /* update replacement state if necessary */
+      ASSERT(0, line->data);
+      DEBUG(0, "Found line in victim cache '%s' at (line %u, base 0x%s)\n",
+            cache->name, ii, hexstr64s(line->base));
+
+      // TODO(Charles): Should the update only occur if we are updating
+      //  the replacement policy?
+      if(update_repl) {
+        // Swap the line of data in the victim cache with the data in the cache.
+        uns way;
+        Cache_Entry* victim = find_repl_entry(cache, line->proc_id, set, &way);
+        cache->entries[set][way] = *line;
+        cache->victim_entries[ii] = *victim;
+
+        if(line->pref) {
+          line->pref = FALSE;
+        }
+        cache->num_demand_access++;
+        update_repl_policy(cache, line, set, way, FALSE);
+        update_repl_policy(cache, victim, 0, ii, FALSE);
+      }
+
+      return line->data;
+    }
+  }
 
   DEBUG(0, "Didn't find line in set %u in cache '%s' base 0x%s\n", set,
         cache->name, hexstr64s(addr));
@@ -290,9 +347,40 @@ void* cache_insert_replpos(Cache* cache, uns8 proc_id, Addr addr,
     /* insert that entry to the shadow cache */
     if((cache->repl_policy == REPL_SHADOW_IDEAL) && new_line->valid)
       shadow_cache_insert(cache, set, new_line->tag, new_line->base);
-    if(new_line->valid)  // bug fixed. 4/26/04 if the entry is not valid,
-                         // repl_line_addr should be set to 0
+    if(new_line->valid) {
       *repl_line_addr = new_line->base;
+
+      if (cache->num_victim_lines > 0) {
+        // New line is a victim. Add to victim cache.
+        // Find LRU victim cache entry and replace it.
+        /* looking for lru */
+        uns     lru_ind = 0;
+        int     ii;
+        Counter lru_time = MAX_CTR;
+        for(ii = 0; ii < cache->num_victim_lines; ii++) {
+          Cache_Entry* entry = &cache->victim_entries[ii];
+          if(!entry->valid) {
+            lru_ind = ii;
+            break;
+          }
+          if(entry->last_access_time < lru_time) {
+            lru_ind  = ii;
+            lru_time = cache->victim_entries[ii].last_access_time;
+          }
+        }
+
+        // Fill the victim cache with the new_line data.
+        Cache_Entry* victim_cache_line      = &cache->victim_entries[lru_ind];
+        victim_cache_line->data             = new_line->data;
+        victim_cache_line->proc_id          = new_line->proc_id;
+        victim_cache_line->valid            = TRUE;
+        victim_cache_line->dirty            = new_line->dirty;
+        victim_cache_line->tag              = new_line->tag;
+        victim_cache_line->base             = new_line->base;
+        victim_cache_line->last_access_time = new_line->last_access_time;
+        victim_cache_line->pref             = new_line->pref;
+      }
+    }
     else
       *repl_line_addr = 0;
     DEBUG(0,

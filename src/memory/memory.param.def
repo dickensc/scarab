@@ -114,6 +114,7 @@ DEF_PARAM(icache_repl, ICACHE_REPL, uns, uns, 0, )
 /* L0 data */
 DEF_PARAM(dcache_size, DCACHE_SIZE, uns, uns, (64 * 1024), )
 DEF_PARAM(dcache_assoc, DCACHE_ASSOC, uns, uns, 1, )
+DEF_PARAM(dcache_num_victim_lines, DCACHE_NUM_VICTIM_LINES, uns, uns, 0, )
 DEF_PARAM(dcache_line_size, DCACHE_LINE_SIZE, uns, uns, 64, )
 DEF_PARAM(dcache_cycles, DCACHE_CYCLES, uns, uns, 2, )
 DEF_PARAM(perfect_dcache, PERFECT_DCACHE, Flag, Flag, FALSE, )
