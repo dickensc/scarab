@@ -273,7 +273,7 @@ void* cache_access(Cache* cache, Addr addr, Addr* line_addr, Flag update_repl) {
   for(ii = 0; ii < cache->num_victim_lines; ii++) {
     Cache_Entry* line = &cache->victim_entries[ii];
 
-    if(line->valid && line->tag == tag) {
+    if(line->valid && line->tag == tag && line->base == *line_addr) {
       // HIT
       /* update replacement state if necessary */
       ASSERT(0, line->data);
