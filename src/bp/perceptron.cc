@@ -41,8 +41,7 @@ struct Perceptron_State {
 std::vector<Perceptron_State> perceptron_state_all_cores;
 
 uns32 get_perceptron_table_index(const Addr addr) {
-  // NUM_PERCEPTRON must be a power of two.
-  return addr & N_BIT_MASK(LOG2_64(NUM_PERCEPTRON));
+  return addr % NUM_PERCEPTRON;
 }
 }  // namespace
 
@@ -53,9 +52,14 @@ void bp_perceptron_retire(Op* op) {}
 
 
 void bp_perceptron_init() {
+  uns ii;
   perceptron_state_all_cores.resize(NUM_CORES);
   for(auto& perceptron_state : perceptron_state_all_cores) {
-    perceptron_state.perceptronTable.resize(NUM_PERCEPTRON);
+    for(ii=0; ii<NUM_PERCEPTRON; ii++) {
+      Perceptron* perceptron = new Perceptron();
+      perceptron->weights = (int32*)malloc(sizeof(int32) * (HIST_LENGTH + 1));
+      perceptron_state.perceptronTable.push_back(*perceptron);
+    }
   }
 }
 
@@ -68,8 +72,21 @@ uns8 bp_perceptron_pred(Op* op) {
   const uns32 percpetron_index = get_perceptron_table_index(addr);
   const Perceptron  perceptron = perceptron_state.perceptronTable[percpetron_index];
 
-  // TODO(Charles): Make prediction.
-  const uns8  pred      = 0;
+  uns8  pred;
+  int32       output   = 0;
+  uns         ii;
+  uns64       mask;
+
+  int32* w = perceptron.weights;
+  output = *(w++); // Bias weight.
+  for(mask = ((uns64)1) << 63, ii = 0; ii < HIST_LENGTH; ii++, mask >>= 1, w++) {
+    if(!!(hist & mask))
+      output += *w;
+    else
+      output += -(*w);
+  }
+
+  pred = (output < PERCEPTRON_THRESHOLD) ? 1 : 0;
 
   DEBUG(proc_id, "Predicting with perceptron for  op_num:%s  index:%d\n",
         unsstr64(op->op_num), percpetron_index);
