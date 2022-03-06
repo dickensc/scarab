@@ -119,6 +119,7 @@ Scarab's source code is organized as follows:
       + bp/bp.h
       + bp/bp_conf.h
       + bp/gshare.h
+      + bp/perceptron.h
       + bp/hybridgp.h
       + bp/tagescl.h
       + bp/bp_targ_mech.h
