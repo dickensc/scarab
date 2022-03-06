@@ -31,6 +31,8 @@ extern "C" {
 }
 
 #define DEBUG(proc_id, args...) _DEBUG(proc_id, DEBUG_BP_DIR, ##args)
+#define MAX_WEIGHT ((1 << (PERCEPTRON_WEIGHT_BITS - 1)) - 1)
+#define MIN_WEIGHT (-(MAX_WEIGHT + 1))
 
 namespace {
 
@@ -69,15 +71,16 @@ uns8 bp_perceptron_pred(Op* op) {
 
   const Addr  addr      = op->oracle_info.pred_addr;
   const uns32 hist      = op->oracle_info.pred_global_hist;
-  const uns32 percpetron_index = get_perceptron_table_index(addr);
-  const Perceptron  perceptron = perceptron_state.perceptronTable[percpetron_index];
+  const uns32 perceptron_index = get_perceptron_table_index(addr);
+  const Perceptron  perceptron = perceptron_state.perceptronTable[perceptron_index];
 
-  uns8  pred;
-  int32       output   = 0;
+  int32*      w         = perceptron.weights;
+
+  uns8        pred;
+  int32       output    = 0;
   uns         ii;
   uns64       mask;
 
-  int32* w = perceptron.weights;
   output = *(w++); // Bias weight.
   for(mask = ((uns64)1) << 63, ii = 0; ii < HIST_LENGTH; ii++, mask >>= 1, w++) {
     if(!!(hist & mask))
@@ -85,20 +88,24 @@ uns8 bp_perceptron_pred(Op* op) {
     else
       output += -(*w);
   }
+  op->perceptron_output = output;
 
-  pred = (output < PERCEPTRON_THRESHOLD) ? 1 : 0;
+  pred = (output < 0) ? 0 : 1;
 
   DEBUG(proc_id, "Predicting with perceptron for  op_num:%s  index:%d\n",
-        unsstr64(op->op_num), percpetron_index);
-  DEBUG(proc_id, "Predicting  addr:%s  percpetron_index:%u  pred:%d  dir:%d\n",
-        hexstr64s(addr), percpetron_index, pred, op->oracle_info.dir);
+        unsstr64(op->op_num), perceptron_index);
+  DEBUG(proc_id, "Predicting  addr:%s  perceptron_index:%u  pred:%d  dir:%d\n",
+        hexstr64s(addr), perceptron_index, pred, op->oracle_info.dir);
+
+  // TODO(Charles): Check if we need to update GHR.
 
   return pred;
 }
 
 void bp_perceptron_update(Op* op) {
   if(op->table_info->cf_type != CF_CBR) {
-    // If op is not a conditional branch, we do not interact with perceptron.
+    // If op is not a conditional branch,
+    // we do not interact with the perceptron branch predictor.
     return;
   }
 
@@ -109,14 +116,55 @@ void bp_perceptron_update(Op* op) {
   const uns32 percpetron_index    = get_perceptron_table_index(addr);
   const Perceptron  perceptron    = perceptron_state.perceptronTable[percpetron_index];
 
+  int32* w = perceptron.weights;
+  int8  taken_coefficient  =  0;
+
+  uns         ii;
+  uns64       mask;
+  int8        hist_taken;
+
   DEBUG(proc_id, "Updating perceptron branch predictor for op_num:%s  perceptron_index:%d  dir:%d\n",
         unsstr64(op->op_num), percpetron_index, op->oracle_info.dir);
 
   // TODO(Charles): Perceptron update.
   if(op->oracle_info.dir) {
     // Branch taken.
+    if(op->perceptron_output >= PERCEPTRON_THRESHOLD) {
+      // Correct and outside of threshold.
+      return;
+    }
+
+    taken_coefficient = 1;
   } else {
     // Branch not taken.
+    if(op->perceptron_output <= -PERCEPTRON_THRESHOLD) {
+      // Correct and outside of threshold.
+      return;
+    }
+    
+    taken_coefficient = -1;
+  }
+
+  // Bias weight.
+  *w = *w + taken_coefficient;
+  if(*w > MAX_WEIGHT)
+    *w = MAX_WEIGHT;
+  if(*w < MIN_WEIGHT)
+    *w = MIN_WEIGHT;
+
+  w++;
+  for(mask = ((uns64)1) << 63, ii = 0; ii < HIST_LENGTH; ii++, mask >>= 1, w++) {
+    if(!!(hist & mask)) {
+      *w = *w + taken_coefficient;
+    }
+    else {
+      *w = *w - taken_coefficient;
+    }
+
+    if(*w > MAX_WEIGHT)
+      *w = MAX_WEIGHT;
+    if(*w < MIN_WEIGHT)
+      *w = MIN_WEIGHT;
   }
 
   DEBUG(proc_id, "Updating addr:%s  perceptron:%u dir:%d\n", hexstr64s(addr),
