@@ -121,7 +121,6 @@ void bp_perceptron_update(Op* op) {
 
   uns         ii;
   uns64       mask;
-  int8        hist_taken;
 
   DEBUG(proc_id, "Updating perceptron branch predictor for op_num:%s  perceptron_index:%d  dir:%d\n",
         unsstr64(op->op_num), percpetron_index, op->oracle_info.dir);
